@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Тренажер ума</title>
+    <!-- Подключаем Tailwind CSS для быстрого и красивого дизайна -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { 
+            touch-action: manipulation; /* Отключаем лишние жесты вроде зума двойным тапом */
+            background-color: #0f172a; 
+            color: #f8fafc; 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
+        }
+        
+        /* Анимация ошибки (тряска) */
+        .shake { animation: shake 0.4s cubic-bezier(.36,.07,.19,.97) both; }
+        @keyframes shake {
+            10%, 90% { transform: translate3d(-1px, 0, 0); }
+            20%, 80% { transform: translate3d(2px, 0, 0); }
+            30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
+            40%, 60% { transform: translate3d(4px, 0, 0); }
+        }
+        
+        /* Эффект нажатия на кнопки */
+        .btn-press { transition: transform 0.1s, background-color 0.1s; }
+        .btn-press:active { transform: scale(0.92); background-color: #475569; }
+        
+        button { touch-action: manipulation; outline: none; }
+    </style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden select-none">
+    
+    <!-- Верхняя панель: выбор режима -->
+    <div class="flex justify-center gap-2 p-4 pt-8 bg-slate-900 shadow-md z-10">
+        <button id="btn-add" class="mode-btn px-4 py-2 rounded-full text-sm font-bold transition-colors bg-blue-500 text-white shadow-lg" onclick="setMode('add')">Сложение</button>
+        <button id="btn-sub" class="mode-btn px-4 py-2 rounded-full text-sm font-bold transition-colors bg-slate-700 text-slate-300" onclick="setMode('sub')">Вычитание</button>
+        <button id="btn-mul" class="mode-btn px-4 py-2 rounded-full text-sm font-bold transition-colors bg-slate-700 text-slate-300" onclick="setMode('mul')">Умножение</button>
+    </div>
+
+    <!-- Основной экран с задачей -->
+    <div class="flex-1 flex flex-col items-center justify-center p-6">
+        <div id="equation" class="text-6xl md:text-8xl font-extrabold tracking-tighter mb-6 text-slate-100 transition-all text-center">
+            <!-- Пример появится здесь -->
+        </div>
+        
+        <!-- Поле ввода ответа -->
+        <div class="flex items-center text-5xl md:text-6xl font-bold text-blue-400 h-20 border-b-4 border-slate-600 min-w-[150px] justify-center transition-all duration-200" id="answer-box">
+            <!-- Ввод пользователя -->
+        </div>
+    </div>
+
+    <!-- Клавиатура (Нумпад) -->
+    <div class="bg-slate-800 p-4 pb-8 rounded-t-[2.5rem] shadow-[0_-10px_40px_rgba(0,0,0,0.3)]">
+        <div class="grid grid-cols-3 gap-3 max-w-md mx-auto">
+            <button class="btn-press bg-slate-700 text-4xl font-bold py-6 rounded-3xl shadow-sm text-white" onclick="press('1')">1</button>
+            <button class="btn-press bg-slate-700 text-4xl font-bold py-6 rounded-3xl shadow-sm text-white" onclick="press('2')">2</button>
+            <button class="btn-press bg-slate-700 text-4xl font-bold py-6 rounded-3xl shadow-sm text-white" onclick="press('3')">3</button>
+            <button class="btn-press bg-slate-700 text-4xl font-bold py-6 rounded-3xl shadow-sm text-white" onclick="press('4')">4</button>
+            <button class="btn-press bg-slate-700 text-4xl font-bold py-6 rounded-3xl shadow-sm text-white" onclick="press('5')">5</button>
+            <button class="btn-press bg-slate-700 text-4xl font-bold py-6 rounded-3xl shadow-sm text-white" onclick="press('6')">6</button>
+            <button class="btn-press bg-slate-700 text-4xl font-bold py-6 rounded-3xl shadow-sm text-white" onclick="press('7')">7</button>
+            <button class="btn-press bg-slate-700 text-4xl font-bold py-6 rounded-3xl shadow-sm text-white" onclick="press('8')">8</button>
+            <button class="btn-press bg-slate-700 text-4xl font-bold py-6 rounded-3xl shadow-sm text-white" onclick="press('9')">9</button>
+            <button class="btn-press bg-red-500/20 text-red-400 text-xl uppercase font-extrabold py-6 rounded-3xl shadow-sm" onclick="clearInput()">Сброс</button>
+            <button class="btn-press bg-slate-700 text-4xl font-bold py-6 rounded-3xl shadow-sm text-white" onclick="press('0')">0</button>
+            <button class="btn-press bg-slate-600 text-3xl font-bold py-6 rounded-3xl shadow-sm text-slate-300" onclick="deleteLast()">⌫</button>
+        </div>
+    </div>
+
+    <script>
+        let currentMode = 'add';
+        let correctAnswer = 0;
+        let currentInput = '';
+        let isAnimating = false;
+
+        const equationEl = document.getElementById('equation');
+        const answerBoxEl = document.getElementById('answer-box');
+
+        // Переключение режимов
+        function setMode(mode) {
+            currentMode = mode;
+            
+            // Обновляем внешний вид кнопок
+            document.querySelectorAll('.mode-btn').forEach(btn => {
+                btn.classList.remove('bg-blue-500', 'text-white', 'shadow-lg');
+                btn.classList.add('bg-slate-700', 'text-slate-300');
+            });
+            const activeBtn = document.getElementById(`btn-${mode}`);
+            activeBtn.classList.remove('bg-slate-700', 'text-slate-300');
+            activeBtn.classList.add('bg-blue-500', 'text-white', 'shadow-lg');
+            
+            generateQuestion();
+        }
+
+        // Логика "неудобных" чисел
+        function generateHardNumbers() {
+            let a, b, q, ans;
+            
+            if (currentMode === 'add') {
+                // Сложение: a + b, где переходит через десяток (например 47 + 6, где 7+6=13)
+                a = Math.floor(Math.random() * 80) + 11; // 11 to 90
+                b = Math.floor(Math.random() * 8) + 2;   // 2 to 9
+                // Убеждаемся, что сумма единиц >= 10
+                while ((a % 10) + b < 10) { 
+                    b = Math.floor(Math.random() * 8) + 2; 
+                }
+                q = `${a} + ${b}`;
+                ans = a + b;
+                
+            } else if (currentMode === 'sub') {
+                // Вычитание: a - b, где единиц у первого числа меньше, чем у второго (например 34 - 8)
+                a = Math.floor(Math.random() * 80) + 21; // 21 to 100
+                let aUnits = a % 10;
+                // Второе число должно быть однозначным, но больше чем единицы первого
+                b = aUnits + Math.floor(Math.random() * (9 - aUnits)) + 1; 
+                if (b > 9) b = 9; // защита от ошибок
+                if (aUnits >= 9) { a -= 2; b = 9; } // если на конце 9, делаем искусственно сложнее
+                q = `${a} - ${b}`;
+                ans = a - b;
+                
+            } else {
+                // Умножение: берем самые сложные сочетания из таблицы
+                const hardA = [6, 7, 8, 9, 12, 13, 14, 15];
+                const hardB = [4, 6, 7, 8, 9];
+                a = hardA[Math.floor(Math.random() * hardA.length)];
+                b = hardB[Math.floor(Math.random() * hardB.length)];
+                
+                // Иногда меняем местами для разнообразия
+                if (Math.random() > 0.5) {
+                    q = `${a} × ${b}`;
+                } else {
+                    q = `${b} × ${a}`;
+                }
+                ans = a * b;
+            }
+            return {q, ans};
+        }
+
+        function generateQuestion() {
+            const data = generateHardNumbers();
+            correctAnswer = data.ans;
+            equationEl.innerText = data.q;
+            clearInput();
+        }
+
+        function press(num) {
+            if (isAnimating) return; // Блокируем ввод во время анимации
+            
+            currentInput += num;
+            updateDisplay();
+            checkAnswer();
+        }
+
+        function clearInput() {
+            currentInput = '';
+            answerBoxEl.classList.remove('text-green-400', 'text-red-400', 'border-green-400', 'border-red-400');
+            answerBoxEl.classList.add('text-blue-400', 'border-slate-600');
+            updateDisplay();
+        }
+
+        function deleteLast() {
+            if (isAnimating) return;
+            currentInput = currentInput.slice(0, -1);
+            updateDisplay();
+        }
+
+        function updateDisplay() {
+            answerBoxEl.innerText = currentInput;
+        }
+
+        function checkAnswer() {
+            if (currentInput === '') return;
+            
+            const numInput = parseInt(currentInput, 10);
+            const targetLength = correctAnswer.toString().length;
+            
+            if (numInput === correctAnswer) {
+                // ПРАВИЛЬНО: Зеленый цвет и переход дальше
+                isAnimating = true;
+                answerBoxEl.classList.replace('text-blue-400', 'text-green-400');
+                answerBoxEl.classList.replace('border-slate-600', 'border-green-400');
+                
+                answerBoxEl.style.transform = 'scale(1.1)';
+                setTimeout(() => {
+                    answerBoxEl.style.transform = 'scale(1)';
+                    generateQuestion();
+                    isAnimating = false;
+                }, 350); // Короткая пауза, чтобы мозг зафиксировал успех
+                
+            } else if (currentInput.length >= targetLength) {
+                // НЕПРАВИЛЬНО: Трясем и очищаем
+                isAnimating = true;
+                answerBoxEl.classList.replace('text-blue-400', 'text-red-400');
+                answerBoxEl.classList.replace('border-slate-600', 'border-red-400');
+                answerBoxEl.classList.add('shake');
+                
+                // Сбрасываем после небольшой задержки
+                setTimeout(() => {
+                    answerBoxEl.classList.remove('shake');
+                    clearInput();
+                    isAnimating = false;
+                }, 400);
+            }
+        }
+
+        // Запуск первого примера
+        generateQuestion();
+        
+        // Добавляем поддержку клавиатуры (если вдруг решишь с компа посидеть)
+        document.addEventListener('keydown', (e) => {
+            if (e.key >= '0' && e.key <= '9') {
+                press(e.key);
+            } else if (e.key === 'Backspace') {
+                deleteLast();
+            } else if (e.key === 'Escape' || e.key.toLowerCase() === 'c') {
+                clearInput();
+            }
+        });
+    </script>
+</body>
+</html>
